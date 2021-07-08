@@ -2312,23 +2312,24 @@ defmodule Explorer.Chain do
   end
 
   @doc """
-  Returns a stream of all blocks that are marked as unfetched in `t:Explorer.Chain.Block.SecondDegreeRelation.t/0`.
-  For each uncle block a `hash` of nephew block and an `index` of the block in it are returned.
+  Returns a stream of all `t:Explorer.Chain.Block.t/0` `hash`es that are marked as unfetched in
+  `t:Explorer.Chain.Block.SecondDegreeRelation.t/0`.
 
   When a block is fetched, its uncles are transformed into `t:Explorer.Chain.Block.SecondDegreeRelation.t/0` and can be
   returned.  Once the uncle is imported its corresponding `t:Explorer.Chain.Block.SecondDegreeRelation.t/0`
   `uncle_fetched_at` will be set and it won't be returned anymore.
   """
-  @spec stream_unfetched_uncles(
+  @spec stream_unfetched_uncle_hashes(
           initial :: accumulator,
-          reducer :: (entry :: term(), accumulator -> accumulator)
+          reducer :: (entry :: Hash.Full.t(), accumulator -> accumulator)
         ) :: {:ok, accumulator}
         when accumulator: term()
-  def stream_unfetched_uncles(initial, reducer) when is_function(reducer, 2) do
+  def stream_unfetched_uncle_hashes(initial, reducer) when is_function(reducer, 2) do
     query =
       from(bsdr in Block.SecondDegreeRelation,
-        where: is_nil(bsdr.uncle_fetched_at) and not is_nil(bsdr.index),
-        select: [:nephew_hash, :index]
+        where: is_nil(bsdr.uncle_fetched_at),
+        select: bsdr.uncle_hash,
+        group_by: bsdr.uncle_hash
       )
 
     Repo.stream_reduce(query, initial, reducer)

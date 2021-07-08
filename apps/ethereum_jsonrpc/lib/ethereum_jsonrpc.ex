@@ -53,11 +53,6 @@ defmodule EthereumJSONRPC do
   @type block_number :: non_neg_integer()
 
   @typedoc """
-  Reference to an uncle block by nephew block's `hash` and `index` in it.
-  """
-  @type nephew_index :: %{required(:nephew_hash) => String.t(), required(:index) => non_neg_integer()}
-
-  @typedoc """
   Binary data encoded as a single hexadecimal number in a `String.t`
   """
   @type data :: String.t()
@@ -249,15 +244,6 @@ defmodule EthereumJSONRPC do
     range
     |> Enum.map(fn number -> %{number: number} end)
     |> fetch_blocks_by_params(&Block.ByNumber.request/1, json_rpc_named_arguments)
-  end
-
-  @doc """
-  Fetches uncle blocks by nephew hashes and indices.
-  """
-  @spec fetch_uncle_blocks([nephew_index()], json_rpc_named_arguments) :: {:ok, Blocks.t()} | {:error, reason :: term}
-  def fetch_uncle_blocks(blocks, json_rpc_named_arguments) do
-    blocks
-    |> fetch_blocks_by_params(&Block.ByNephew.request/1, json_rpc_named_arguments)
   end
 
   @spec fetch_net_version(json_rpc_named_arguments) :: {:ok, non_neg_integer()} | {:error, reason :: term}

@@ -201,8 +201,7 @@ defmodule Explorer.Factory do
   def block_second_degree_relation_factory do
     %Block.SecondDegreeRelation{
       uncle_hash: block_hash(),
-      nephew: build(:block),
-      index: 0
+      nephew: build(:block)
     }
   end
 

@@ -36,8 +36,7 @@ defmodule Indexer.Supervisor do
 
   alias Indexer.Temporary.{
     BlocksTransactionsMismatch,
-    UncatalogedTokenTransfers,
-    UnclesWithoutIndex
+    UncatalogedTokenTransfers
   }
 
   def child_spec([]) do
@@ -131,8 +130,6 @@ defmodule Indexer.Supervisor do
 
       # Temporary workers
       {UncatalogedTokenTransfers.Supervisor, [[]]},
-      {UnclesWithoutIndex.Supervisor,
-       [[json_rpc_named_arguments: json_rpc_named_arguments, memory_monitor: memory_monitor]]},
       {BlocksTransactionsMismatch.Supervisor,
        [[json_rpc_named_arguments: json_rpc_named_arguments, memory_monitor: memory_monitor]]},
       {PendingOpsCleaner, [[], []]}

@@ -5,21 +5,19 @@ defmodule Explorer.Chain.Block.SecondDegreeRelationTest do
   alias Explorer.Chain.Block
 
   describe "changeset/2" do
-    test "requires hash, nephew_hash and index" do
+    test "requires hash and nephew_hash" do
       assert %Changeset{valid?: false} =
                changeset = Block.SecondDegreeRelation.changeset(%Block.SecondDegreeRelation{}, %{})
 
       assert changeset_errors(changeset) == %{
                nephew_hash: ["can't be blank"],
-               uncle_hash: ["can't be blank"],
-               index: ["can't be blank"]
+               uncle_hash: ["can't be blank"]
              }
 
       assert %Changeset{valid?: true} =
                Block.SecondDegreeRelation.changeset(%Block.SecondDegreeRelation{}, %{
                  nephew_hash: block_hash(),
-                 uncle_hash: block_hash(),
-                 index: 0
+                 uncle_hash: block_hash()
                })
     end
 
@@ -27,8 +25,7 @@ defmodule Explorer.Chain.Block.SecondDegreeRelationTest do
       assert %Changeset{changes: %{uncle_fetched_at: _}, valid?: true} =
                Block.SecondDegreeRelation.changeset(%Block.SecondDegreeRelation{}, %{
                  nephew_hash: block_hash(),
-                 uncle_hash: block_hash(),
-                 index: 0,
+                 uncle_hash: block_hash()
                  uncle_fetched_at: DateTime.utc_now()
                })
     end
@@ -36,7 +33,7 @@ defmodule Explorer.Chain.Block.SecondDegreeRelationTest do
     test "enforces foreign key constraint on nephew_hash" do
       assert {:error, %Changeset{valid?: false} = changeset} =
                %Block.SecondDegreeRelation{}
-               |> Block.SecondDegreeRelation.changeset(%{nephew_hash: block_hash(), uncle_hash: block_hash(), index: 0})
+               |> Block.SecondDegreeRelation.changeset(%{nephew_hash: block_hash(), uncle_hash: block_hash()})
                |> Repo.insert()
 
       assert changeset_errors(changeset) == %{nephew_hash: ["does not exist"]}
@@ -47,7 +44,7 @@ defmodule Explorer.Chain.Block.SecondDegreeRelationTest do
 
       assert {:error, %Changeset{valid?: false} = changeset} =
                %Block.SecondDegreeRelation{}
-               |> Block.SecondDegreeRelation.changeset(%{nephew_hash: nephew_hash, uncle_hash: hash, index: 0})
+               |> Block.SecondDegreeRelation.changeset(%{nephew_hash: nephew_hash, uncle_hash: hash})
                |> Repo.insert()
 
       assert changeset_errors(changeset) == %{uncle_hash: ["has already been taken"]}

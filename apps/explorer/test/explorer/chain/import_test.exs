@@ -1582,7 +1582,7 @@ defmodule Explorer.Chain.ImportTest do
                    timeout: 1
                  },
                  block_second_degree_relations: %{
-                   params: [%{nephew_hash: block_hash, uncle_hash: uncle_hash, index: 0}],
+                   params: [%{nephew_hash: block_hash, uncle_hash: uncle_hash}],
                    timeout: 1
                  },
                  internal_transactions: %{

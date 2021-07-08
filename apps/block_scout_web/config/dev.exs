@@ -16,7 +16,7 @@ port =
 
 config :block_scout_web, BlockScoutWeb.Endpoint,
   secret_key_base:
-    System.get_env("SECRET_KEY_BASE") || "RMgI4C1HSkxsEjdhtGMfwAHfyT6CKWXOgzCboJflfSm4jeAlic52io05KB6mqzc5",
+    System.get_env("SECRET_KEY_BASE") || "ukj33MEZsFbmMLCPcOHV8Ph0Q9cwfjU2ps6f+6u+VNWU3PCPkeJ9/Zd5CWevLtLH",
   http: [
     port: port || 4000
   ],

@@ -12,7 +12,6 @@ defmodule Indexer.Fetcher.UncleBlock do
   alias Ecto.Changeset
   alias EthereumJSONRPC.Blocks
   alias Explorer.Chain
-  alias Explorer.Chain.Cache.{Accounts, Uncles}
   alias Explorer.Chain.Hash
   alias Indexer.{Block, BufferedTask, Tracer}
   alias Indexer.Fetcher.UncleBlock
@@ -30,13 +29,17 @@ defmodule Indexer.Fetcher.UncleBlock do
   ]
 
   @doc """
-  Asynchronously fetches `t:Explorer.Chain.Block.t/0` for the given `nephew_hash` and `index`
-  and updates `t:Explorer.Chain.Block.SecondDegreeRelation.t/0` `block_fetched_at`.
+  Asynchronously fetches `t:Explorer.Chain.Block.t/0` for the given `hashes` and updates
+  `t:Explorer.Chain.Block.SecondDegreeRelation.t/0` `block_fetched_at`.
   """
-  @spec async_fetch_blocks([%{required(:nephew_hash) => Hash.Full.t(), required(:index) => non_neg_integer()}]) :: :ok
-  def async_fetch_blocks(relations) when is_list(relations) do
-    entries = Enum.map(relations, &entry/1)
-    BufferedTask.buffer(__MODULE__, entries)
+  @spec async_fetch_blocks([Hash.Full.t()]) :: :ok
+  def async_fetch_blocks(block_hashes) when is_list(block_hashes) do
+    BufferedTask.buffer(
+      __MODULE__,
+      block_hashes
+      |> Enum.map(&to_string/1)
+      |> Enum.uniq()
+    )
   end
 
   @doc false
@@ -60,9 +63,9 @@ defmodule Indexer.Fetcher.UncleBlock do
   @impl BufferedTask
   def init(initial, reducer, _) do
     {:ok, final} =
-      Chain.stream_unfetched_uncles(initial, fn uncle, acc ->
-        uncle
-        |> entry()
+      Chain.stream_unfetched_uncle_hashes(initial, fn uncle_hash, acc ->
+        uncle_hash
+        |> to_string()
         |> reducer.(acc)
       end)
 
@@ -71,54 +74,43 @@ defmodule Indexer.Fetcher.UncleBlock do
 
   @impl BufferedTask
   @decorate trace(name: "fetch", resource: "Indexer.Fetcher.UncleBlock.run/2", service: :indexer, tracer: Tracer)
-  def run(entries, %Block.Fetcher{json_rpc_named_arguments: json_rpc_named_arguments} = block_fetcher) do
-    unique_entries = Enum.uniq(entries)
+  def run(hashes, %Block.Fetcher{json_rpc_named_arguments: json_rpc_named_arguments} = block_fetcher) do
+    # the same block could be included as an uncle on multiple blocks, but we only want to fetch it once
+    unique_hashes = Enum.uniq(hashes)
 
-    entry_count = Enum.count(unique_entries)
-    Logger.metadata(count: entry_count)
+    unique_hash_count = Enum.count(unique_hashes)
+    Logger.metadata(count: unique_hash_count)
 
     Logger.debug("fetching")
 
-    unique_entries
-    |> Enum.map(&entry_to_params/1)
-    |> EthereumJSONRPC.fetch_uncle_blocks(json_rpc_named_arguments)
-    |> case do
+    case EthereumJSONRPC.fetch_blocks_by_hash(unique_hashes, json_rpc_named_arguments) do
       {:ok, blocks} ->
-        run_blocks(blocks, block_fetcher, unique_entries)
+        run_blocks(blocks, block_fetcher, unique_hashes)
 
       {:error, reason} ->
         Logger.error(
           fn ->
             ["failed to fetch: ", inspect(reason)]
           end,
-          error_count: entry_count
+          error_count: unique_hash_count
         )
 
-        {:retry, unique_entries}
+        {:retry, unique_hashes}
     end
   end
 
-  defp entry_to_params({nephew_hash_bytes, index}) when is_integer(index) do
-    {:ok, nephew_hash} = Hash.Full.cast(nephew_hash_bytes)
-    %{nephew_hash: to_string(nephew_hash), index: index}
-  end
+  defp run_blocks(%Blocks{blocks_params: []}, _, original_entries), do: {:retry, original_entries}
 
-  defp entry(%{nephew_hash: %Hash{bytes: nephew_hash_bytes}, index: index}) do
-    {nephew_hash_bytes, index}
-  end
-
-  def run_blocks(%Blocks{blocks_params: []}, _, original_entries), do: {:retry, original_entries}
-
-  def run_blocks(
-        %Blocks{
-          blocks_params: blocks_params,
-          transactions_params: transactions_params,
-          block_second_degree_relations_params: block_second_degree_relations_params,
-          errors: errors
-        },
-        block_fetcher,
-        original_entries
-      ) do
+  defp run_blocks(
+         %Blocks{
+           blocks_params: blocks_params,
+           transactions_params: transactions_params,
+           block_second_degree_relations_params: block_second_degree_relations_params,
+           errors: errors
+         },
+         block_fetcher,
+         original_entries
+       ) do
     addresses_params = Addresses.extract_addresses(%{blocks: blocks_params, transactions: transactions_params})
 
     case Block.Fetcher.import(block_fetcher, %{
@@ -127,9 +119,7 @@ defmodule Indexer.Fetcher.UncleBlock do
            block_second_degree_relations: %{params: block_second_degree_relations_params},
            transactions: %{params: transactions_params, on_conflict: :nothing}
          }) do
-      {:ok, imported} ->
-        Accounts.drop(imported[:addresses])
-        Uncles.update_from_second_degree_relations(imported[:block_second_degree_relations])
+      {:ok, _} ->
         retry(errors)
 
       {:error, {:import = step, [%Changeset{} | _] = changesets}} ->
@@ -156,7 +146,7 @@ defmodule Indexer.Fetcher.UncleBlock do
 
   @impl Block.Fetcher
   def import(_, options) when is_map(options) do
-    with {:ok, %{block_second_degree_relations: block_second_degree_relations} = imported} <-
+    with {:ok, %{block_second_degree_relations: block_second_degree_relations}} = ok <-
            options
            |> Map.drop(@ignored_options)
            |> uncle_blocks()
@@ -168,9 +158,11 @@ defmodule Indexer.Fetcher.UncleBlock do
       # * Token.async_fetch is not called because the tokens only matter on consensus blocks
       # * TokenBalance.async_fetch is not called because it uses block numbers from consensus, not uncles
 
-      UncleBlock.async_fetch_blocks(block_second_degree_relations)
+      block_second_degree_relations
+      |> Enum.map(& &1.uncle_hash)
+      |> UncleBlock.async_fetch_blocks()
 
-      {:ok, imported}
+      ok
     end
   end
 
@@ -240,17 +232,7 @@ defmodule Indexer.Fetcher.UncleBlock do
     Enum.map(errors, &error_to_entry/1)
   end
 
-  defp error_to_entry(%{data: %{hash: hash, index: index}}) when is_binary(hash) do
-    {:ok, %Hash{bytes: nephew_hash_bytes}} = Hash.Full.cast(hash)
-
-    {nephew_hash_bytes, index}
-  end
-
-  defp error_to_entry(%{data: %{nephew_hash: hash, index: index}}) when is_binary(hash) do
-    {:ok, %Hash{bytes: nephew_hash_bytes}} = Hash.Full.cast(hash)
-
-    {nephew_hash_bytes, index}
-  end
+  defp error_to_entry(%{data: %{hash: hash}}) when is_binary(hash), do: hash
 
   defp errors_to_iodata(errors) when is_list(errors) do
     errors_to_iodata(errors, [])
@@ -266,9 +248,5 @@ defmodule Indexer.Fetcher.UncleBlock do
        when is_integer(code) and is_binary(message) and is_binary(hash) do
     [hash, ": (", to_string(code), ") ", message, ?\n]
   end
-
-  defp error_to_iodata(%{code: code, message: message, data: %{nephew_hash: hash}})
-       when is_integer(code) and is_binary(message) and is_binary(hash) do
-    [hash, ": (", to_string(code), ") ", message, ?\n]
-  end
 end
+

@@ -1545,8 +1545,7 @@ defmodule Explorer.ChainTest do
         params: [
           %{
             nephew_hash: "0xf6b4b8c88df3ebd252ec476328334dc026cf66606a84fb769b3d3cbccc8471bd",
-            uncle_hash: "0xf6b4b8c88df3ebd252ec476328334dc026cf66606a84fb769b3d3cbccc8471be",
-            index: 0
+            uncle_hash: "0xf6b4b8c88df3ebd252ec476328334dc026cf66606a84fb769b3d3cbccc8471be"
           }
         ]
       },
@@ -4194,19 +4193,19 @@ defmodule Explorer.ChainTest do
     end
   end
 
-  describe "stream_unfetched_uncles/2" do
+  describe "stream_unfetched_uncle_hashes/2" do
     test "does not return uncle hashes where t:Explorer.Chain.Block.SecondDegreeRelation.t/0 uncle_fetched_at is not nil" do
-      %Block.SecondDegreeRelation{nephew: %Block{}, nephew_hash: nephew_hash, index: index, uncle_hash: uncle_hash} =
+      %Block.SecondDegreeRelation{nephew: %Block{}, uncle_hash: uncle_hash} =
         insert(:block_second_degree_relation)
 
-      assert {:ok, [%{nephew_hash: ^nephew_hash, index: ^index}]} =
-               Explorer.Chain.stream_unfetched_uncles([], &[&1 | &2])
+      assert {:ok, [^uncle_hash]} =
+               Explorer.Chain.stream_unfetched_uncle_hashes([], &[&1 | &2])
 
       query = from(bsdr in Block.SecondDegreeRelation, where: bsdr.uncle_hash == ^uncle_hash)
 
       assert {1, _} = Repo.update_all(query, set: [uncle_fetched_at: DateTime.utc_now()])
 
-      assert {:ok, []} = Explorer.Chain.stream_unfetched_uncles([], &[&1 | &2])
+      assert {:ok, []} = Explorer.Chain.stream_unfetched_uncle_hashes([], &[&1 | &2])
     end
   end
 
